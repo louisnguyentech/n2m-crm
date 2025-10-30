@@ -188,23 +188,43 @@ app.get("/api/files/:folderId", async (req, res) => {
   res.json(filesWithUrl);
 });
 
-app.post("/api/upload/:folderId", upload.array("files"), async (req, res) => {
-  const { folderId } = req.params;
-  const created = [];
-  for (const file of req?.files as Express.Multer.File[]) {
-    const fileDoc = new File({
-      name: file.originalname,
-      size: file.size,
-      mimeType: file.mimetype,
-      url: file.filename,
-      folderId,
-    });
-    await fileDoc.save();
-    created.push(fileDoc);
-    await Folder.findByIdAndUpdate(folderId, { $push: { files: fileDoc._id } });
+app.put("/api/folders/:id", async (req, res) => {
+  const { id } = req.params;
+  const { name } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: "Tên folder không hợp lệ" });
   }
-  res.json({ uploaded: created.length, files: created });
+
+  const folder = await Folder.findByIdAndUpdate(id, { name }, { new: true });
+
+  if (!folder) return res.status(404).json({ error: "Không tìm thấy folder" });
+
+  res.json(folder);
 });
+
+app.post(
+  "/api/upload/:folderId",
+  upload.array("files", 5),
+  async (req, res) => {
+    const { folderId } = req.params;
+    const created = [];
+    for (const file of req?.files as Express.Multer.File[]) {
+      const fileDoc = new File({
+        name: file.originalname,
+        size: file.size,
+        mimeType: file.mimetype,
+        url: file.filename,
+        folderId,
+      });
+      await fileDoc.save();
+      created.push(fileDoc);
+      await Folder.findByIdAndUpdate(folderId, {
+        $push: { files: fileDoc._id },
+      });
+    }
+    res.json({ uploaded: created.length, files: created });
+  }
+);
 
 app.delete("/api/files/:id", async (req, res) => {
   const { id } = req.params;
