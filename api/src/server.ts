@@ -59,6 +59,7 @@ const { Schema } = mongoose;
 const FolderSchema = new Schema({
   name: { type: String, required: true },
   parentId: { type: Schema.Types.ObjectId, ref: "Folder", default: null },
+  icon: { type: String, default: "📁" }, // THÊM TRƯỜNG ICON
 });
 
 const FileSchema = new Schema({
@@ -98,7 +99,7 @@ app.get("/db-ping", async (_req, res) => {
 const ensureRoot = async () => {
   const root = await Folder.findOne({ parentId: null });
   if (!root) {
-    await new Folder({ name: "Root", parentId: null }).save();
+    await new Folder({ name: "Root", parentId: null, icon: "📁" }).save();
     console.log("Root folder created");
   }
 };
@@ -107,23 +108,43 @@ ensureRoot();
 // --- Folder APIs ---
 app.get("/api/folders", async (_req, res) => {
   const folders = await Folder.find().lean();
+  console.log("Folders from DB:", folders); // DEBUG LOG
   res.json(folders);
 });
 
 app.post("/api/folders", async (req, res) => {
-  const { name, parentId } = req.body;
-  const folder = new Folder({ name, parentId: parentId || null });
+  const { name, parentId, icon } = req.body;
+  console.log("Creating folder with data:", { name, parentId, icon }); // DEBUG LOG
+
+  const folder = new Folder({
+    name,
+    parentId: parentId || null,
+    icon: icon || "📁",
+  });
   await folder.save();
+
+  console.log("Folder created:", folder);
   res.json(folder);
 });
 
 app.put("/api/folders/:id", async (req, res) => {
   const { id } = req.params;
-  const { name } = req.body;
+  const { name, icon } = req.body;
+
+  console.log("Updating folder:", { id, name, icon });
+
   if (!name?.trim())
     return res.status(400).json({ error: "Tên folder không hợp lệ" });
-  const folder = await Folder.findByIdAndUpdate(id, { name }, { new: true });
+
+  const folder = await Folder.findByIdAndUpdate(
+    id,
+    { name, icon: icon || "📁" },
+    { new: true }
+  );
+
   if (!folder) return res.status(404).json({ error: "Không tìm thấy folder" });
+
+  console.log("Folder updated:", folder);
   res.json(folder);
 });
 
@@ -209,6 +230,24 @@ app.delete("/api/files/:id", async (req, res) => {
 
   await File.deleteOne({ _id: id });
   res.json({ ok: true });
+});
+
+app.post("/api/migrate-folders-icons", async (req, res) => {
+  try {
+    const result = await Folder.updateMany(
+      { icon: { $exists: false } },
+      { $set: { icon: "📁" } }
+    );
+
+    console.log("Migration result:", result);
+    res.json({
+      ok: true,
+      message: `Đã cập nhật ${result.modifiedCount} folder với icon mặc định`,
+    });
+  } catch (error) {
+    console.error("Migration error:", error);
+    res.status(500).json({ ok: false, error: "Migration failed" });
+  }
 });
 
 // --- Graceful shutdown ---
