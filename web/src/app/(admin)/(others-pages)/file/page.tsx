@@ -17,6 +17,7 @@ interface Folder {
   _id: string;
   name: string;
   parentId: string | null;
+  icon?: string;
 }
 
 interface FileItem {
@@ -35,6 +36,12 @@ export default function Files() {
   const [expandedFolders, setExpandedFolders] = useState<string[]>([]);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
+
+  const [preview, setPreview] = useState<{ open: boolean; file: FileItem | null }>({
+    open: false,
+    file: null,
+  });
+
 
   const [modal, setModal] = useState<{
     open: boolean;
@@ -59,7 +66,8 @@ export default function Files() {
 
   const handleCreateFolder = async (
     parentId: string | null = null,
-    name?: string
+    name?: string,
+    icon?: string
   ) => {
     const folderName = name || newFolderName;
     if (!folderName.trim()) return toast.error("Tên folder không được để trống");
@@ -68,6 +76,7 @@ export default function Files() {
       const res: any = await axios.post(`${BASE_URL}/folders`, {
         name: folderName,
         parentId,
+        icon: icon || "default",
       });
       setFolders((prev) => [...prev, res.data]);
       setNewFolderName("");
@@ -77,14 +86,15 @@ export default function Files() {
     }
   };
 
-  const handleRenameFolder = async (folder_id: string, newName: string) => {
+  const handleRenameFolder = async (folder_id: string, newName: string, icon?: string) => {
     try {
       const res: any = await axios.put(`${BASE_URL}/folders/${folder_id}`, {
         name: newName.trim(),
+        icon: icon || "default",
       });
       setFolders((prev) =>
         prev.map((f) =>
-          f._id === folder_id ? { ...f, name: res.data.name } : f
+          f._id === folder_id ? { ...f, name: res.data.name, icon: res.data.icon } : f
         )
       );
       toast.success("Đổi tên thành công");
@@ -163,6 +173,22 @@ export default function Files() {
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
 
+  const renderFolderIcon = (folder: Folder) => {
+    if (folder.icon && folder.icon !== "default") {
+      if (folder.icon.startsWith("http") || folder.icon.startsWith("data:")) {
+        return (
+          <img
+            src={folder.icon}
+            alt={folder.name}
+            className="w-4 h-4 object-contain"
+          />
+        );
+      }
+      return <span className="text-sm">{folder.icon}</span>;
+    }
+    return <FolderIcon />;
+  };
+
   useEffect(() => {
     handleGetFolders();
   }, []);
@@ -200,7 +226,7 @@ export default function Files() {
               ) : (
                 <div className="w-4" />
               )}
-              <FolderIcon /> {folder.name}
+              {renderFolderIcon(folder)} {folder.name}
             </div>
 
             <div className="relative">
@@ -280,27 +306,26 @@ export default function Files() {
     <>
       <div className="flex flex-col md:flex-row h-screen !bg-white dark:!bg-black border border-[#e4e7ec] rounded-2xl">
         <div className="flex flex-col w-full md:w-72 border-r p-4 md:h-screen overflow-hidden">
-          <div className="flex mb-3 gap-2">
-            <input
-              type="text"
-              placeholder="Tên folder..."
-              value={newFolderName}
-              onChange={(e) => setNewFolderName(e.target.value)}
-              className="border p-2 rounded w-full text-sm"
-            />
+          <div className="flex justify-end pb-3 gap-2 border-b">
             <button
-              onClick={() => handleCreateFolder(null)}
-              className="text-sm flex items-center gap-1 whitespace-nowrap px-3 py-2 rounded text-gray-600"
+              onClick={() => setModal({
+                open: true,
+                type: "create",
+                folderId: null,
+                oldName: "",
+                parentId: null
+              })}
+              className="px-4 py-2 hover:bg-blue-100 border rounded text-sm text-gray-700 dark:text-white"
             >
-              <FolderAddIcon />
+              Create Folder
             </button>
           </div>
           <div className="flex-1 overflow-y-auto">{renderFolderTree(null)}</div>
         </div>
 
-        <div className="flex-1 overflow-auto p-4 md:p-6">
-          <div className="mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-            <div className="flex items-center gap-2">
+        <div className="flex-1 overflow-auto p-2 md:p-4">
+          <div className="mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3  border-b pb-3">
+            <div className="flex items-center gap-2 ">
               <input
                 type="checkbox"
                 checked={files.length > 0 && selectedFiles.length === files.length}
@@ -309,6 +334,7 @@ export default function Files() {
                     ? setSelectedFiles(files.map((f) => f._id))
                     : setSelectedFiles([])
                 }
+                className="cursor-pointer"
               />
               <span className="text-sm text-gray-600">Chọn tất cả</span>
             </div>
@@ -317,7 +343,7 @@ export default function Files() {
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={!selectedFolder}
-                className="px-4 py-2 border rounded text-sm text-gray-700 dark:text-white"
+                className="px-4 py-2 border hover:bg-blue-100 rounded text-sm text-gray-700 dark:text-white cursor-pointer"
               >
                 Upload Files
               </button>
@@ -399,23 +425,97 @@ export default function Files() {
                 })()}
 
                 <div className="mt-2 text-xs">
-                  <a
-                    href={file.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline break-all"
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPreview({ open: true, file });
+                    }}
+                    className="text-blue-600 hover:underline break-all text-left w-full"
                   >
                     {file.name}
-                  </a>
+                  </button>
                   <p className="text-gray-400 text-xs">
                     {(file.size / 1024).toFixed(1)} KB
                   </p>
                 </div>
+
               </div>
             ))}
           </div>
         </div>
       </div>
+      {preview.open && preview.file && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-xl p-6 max-w-xl w-full relative">
+            <button
+              onClick={() => setPreview({ open: false, file: null })}
+              className="absolute top-2 right-2 text-gray-500 hover:text-black"
+            >
+              ✕
+            </button>
+
+            <h2 className="text-lg font-semibold mb-4">{preview.file.name}</h2>
+
+            {(() => {
+              const url = preview.file?.url.toLowerCase() || "";
+              if (/\.(jpg|jpeg|png|gif|webp)$/i.test(url))
+                return (
+                  <img
+                    src={preview.file.url}
+                    alt={preview.file.name}
+                    className="w-full rounded-lg shadow mb-4"
+                  />
+                );
+              if (/\.(mp4|webm|ogg)$/i.test(url))
+                return (
+                  <video
+                    src={preview.file.url}
+                    controls
+                    className="w-full rounded-lg shadow mb-4"
+                  />
+                );
+
+              const ext = url.split(".").pop() || "";
+              const typeMap: Record<string, string> = {
+                pdf: "PDF File",
+                xls: "Excel File",
+                xlsx: "Excel File",
+                doc: "Word File",
+                docx: "Word File",
+                zip: "ZIP File",
+                rar: "RAR File",
+              };
+              const label = typeMap[ext] || "File khác";
+              return (
+                <div className="text-center text-gray-700 mb-4">
+                  <p>{label}</p>
+                </div>
+              );
+            })()}
+
+            <div className="flex justify-end gap-3 mt-2">
+              <button
+                onClick={async () => {
+                  await navigator.clipboard.writeText(preview.file?.url || "");
+                  toast.success("Đã copy link file!");
+                }}
+                className="px-3 py-1 border rounded text-sm hover:bg-gray-100"
+              >
+                Copy link
+              </button>
+
+              <a
+                href={preview.file.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1 border rounded text-sm text-blue-600 hover:bg-blue-50"
+              >
+                Mở file
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
 
       <FolderModal
         open={modal.open}
@@ -430,11 +530,11 @@ export default function Files() {
             oldName: "",
           })
         }
-        onConfirm={(newName, parentId) => {
-          if (modal.type === "create" && parentId) {
-            handleCreateFolder(parentId, newName || "");
+        onConfirm={(newName, parentId, icon) => {
+          if (modal.type === "create" && parentId !== undefined) {
+            handleCreateFolder(parentId, newName || "", icon);
           } else if (modal.type === "rename" && modal.folderId) {
-            handleRenameFolder(modal.folderId, newName || "");
+            handleRenameFolder(modal.folderId, newName || "", icon);
           } else if (modal.type === "delete" && modal.folderId) {
             handleDeleteFolder(modal.folderId);
           }
